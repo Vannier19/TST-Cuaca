@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Informasi Cuaca Lanjutan</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet CSS untuk Peta -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        :root {
+            --bg-default: linear-gradient(135deg, #6dd5ed, #2193b0);
+            --bg-clear: linear-gradient(135deg, #2980b9, #6dd5fa, #ffffff);
+            --bg-clouds: linear-gradient(135deg, #606c88, #3f4c6b);
+            --bg-rain: linear-gradient(135deg, #2c3e50, #4ca1af);
+            --bg-thunderstorm: linear-gradient(135deg, #1f1c2c, #928dab);
+            --bg-snow: linear-gradient(135deg, #e6dada, #274046);
+            --bg-mist: linear-gradient(135deg, #bdc3c7, #2c3e50);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg-default);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            transition: background 1s ease; /* Transisi untuk latar belakang dinamis */
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            width: 100%;
+            max-width: 900px; /* Lebarkan container untuk forecast */
+            color: #fff;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .search-box input {
+            flex-grow: 1;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            outline: none;
+            color: #333;
+        }
+
+        .search-box button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            background-color: #ff9800;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .search-box button:hover { background-color: #e68900; }
+
+        .weather-info-main {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 20px;
+        }
+
+        .weather-info {
+            text-align: center;
+            flex-grow: 1;
+        }
+        #weather-icon { width: 120px; height: 120px; margin: -20px 0; }
+        #temperature { font-size: 4rem; font-weight: 600; margin: 10px 0; }
+        #weather-description { font-size: 1.5rem; text-transform: capitalize; margin-top: -10px; }
+        #city-name { font-size: 2rem; font-weight: 500; margin-bottom: 5px; }
+        #date-time { font-size: 1rem; margin-bottom: 20px; color: rgba(255, 255, 255, 0.8); }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            flex-grow: 1;
+            min-width: 250px;
+        }
+        .detail-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .detail-item .label { font-size: 0.9rem; color: rgba(255, 255, 255, 0.8); }
+        .detail-item .value { font-size: 1.2rem; font-weight: 600; }
+
+        #error-message, #loader {
+            text-align: center;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+            margin-top: 15px;
+        }
+        #error-message { color: #ffdddd; background-color: #d32f2f; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* --- FITUR BARU: Forecast 5 Hari --- */
+        .forecast-container {
+            margin-top: 20px;
+        }
+        .forecast-title {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+        .forecast-grid {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto; /* Agar bisa di-scroll di HP */
+            padding-bottom: 10px;
+        }
+        .forecast-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 15px;
+            padding: 15px;
+            text-align: center;
+            min-width: 120px; /* Lebar minimum kartu */
+            flex: 1;
+        }
+        .forecast-card .day { font-weight: 600; }
+        .forecast-card .temp { font-size: 1.5rem; margin: 5px 0; }
+        .forecast-card .desc { font-size: 0.9rem; text-transform: capitalize; }
+
+        /* --- FITUR BARU: MAP --- */
+        .map-container {
+            margin-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+            padding-top: 20px;
+        }
+        .map-title {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .map-info {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="search-box">
+            <input type="text" id="city-input" placeholder="Masukkan nama kota...">
+            <button id="search-button">Cari</button>
+        </div>
+
+        <div id="loader"><div class="spinner"></div></div>
+        <div id="error-message"></div>
+
+        <div id="weather-content" style="display: none;">
+            <div class="weather-info-main">
+                <div class="weather-info">
+                    <h1 id="city-name"></h1>
+                    <p id="date-time"></p>
+                    <img id="weather-icon" src="" alt="Ikon Cuaca">
+                    <h2 id="temperature"></h2>
+                    <p id="weather-description"></p>
+                    <p id="feels-like"></p>
+                </div>
+
+                <div class="details-grid">
+                    <div class="detail-item"><div class="label">Kelembapan</div><div class="value" id="humidity"></div></div>
+                    <div class="detail-item"><div class="label">Angin</div><div class="value" id="wind"></div></div>
+                    <div class="detail-item"><div class="label">Tekanan</div><div class="value" id="pressure"></div></div>
+                    <div class="detail-item"><div class="label">Jarak Pandang</div><div class="value" id="visibility"></div></div>
+                    <div class="detail-item"><div class="label">Matahari Terbit</div><div class="value" id="sunrise"></div></div>
+                    <div class="detail-item"><div class="label">Matahari Terbenam</div><div class="value" id="sunset"></div></div>
+                </div>
+            </div>
+            
+            <div class="forecast-container">
+                <h3 class="forecast-title">Prakiraan 5 Hari</h3>
+                <div class="forecast-grid" id="forecast-grid">
+                    </div>
+            </div>
+
+            <!-- Fitur Peta Interaktif -->
+            <div class="map-container">
+                <h3 class="map-title">Peta Cuaca Interaktif</h3>
+                <div id="map"></div>
+                <p class="map-info">💡 Klik pada peta untuk melihat cuaca di lokasi tersebut</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS untuk Peta -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        const apiKey = '717b64c259b63d6656a8032709d0a797';
+        const defaultCity = 'Bandung';
+
+        const cityInput = document.getElementById('city-input');
+        const searchButton = document.getElementById('search-button');
+        const loader = document.getElementById('loader');
+        const errorMessage = document.getElementById('error-message');
+        const weatherContent = document.getElementById('weather-content');
+        const forecastGrid = document.getElementById('forecast-grid');
+        const body = document.body;
+
+        // Inisialisasi peta
+        let map;
+        let marker;
+
+        function initMap(lat = -6.9175, lon = 107.6191) { // Default: Bandung
+            if (!map) {
+                map = L.map('map').setView([lat, lon], 10);
+                
+                // Tambahkan tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                // Event listener untuk klik pada peta
+                map.on('click', function(e) {
+                    const { lat, lng } = e.latlng;
+                    fetchWeatherByCoords(lat, lng);
+                    updateMarker(lat, lng);
+                });
+            } else {
+                map.setView([lat, lon], 10);
+            }
+            
+            updateMarker(lat, lon);
+        }
+
+        function updateMarker(lat, lon) {
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            marker = L.marker([lat, lon]).addTo(map);
+        }
+
+        async function fetchWeatherByCoords(lat, lon) {
+            showLoading();
+            try {
+                const [currentWeather, forecast] = await Promise.all([
+                    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric&lang=id`).then(res => res.json()),
+                    fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric&lang=id`).then(res => res.json())
+                ]);
+
+                if (currentWeather.cod !== 200) throw new Error(currentWeather.message);
+                if (forecast.cod !== "200") throw new Error(forecast.message);
+                
+                displayCurrentWeather(currentWeather);
+                displayForecast(forecast);
+                updateBackground(currentWeather.weather[0].main);
+
+                weatherContent.style.display = 'block';
+                errorMessage.style.display = 'none';
+
+                // Update input box dengan nama kota
+                cityInput.value = currentWeather.name;
+
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function fetchAllWeather(city) {
+            showLoading();
+            try {
+                // Ambil data cuaca saat ini dan forecast secara bersamaan
+                const [currentWeather, forecast] = await Promise.all([
+                    fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric&lang=id`).then(res => res.json()),
+                    fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}&units=metric&lang=id`).then(res => res.json())
+                ]);
+
+                if (currentWeather.cod !== 200) throw new Error(currentWeather.message);
+                if (forecast.cod !== "200") throw new Error(forecast.message);
+                
+                displayCurrentWeather(currentWeather);
+                displayForecast(forecast);
+                updateBackground(currentWeather.weather[0].main);
+
+                weatherContent.style.display = 'block';
+                errorMessage.style.display = 'none';
+
+                // Update peta dengan koordinat kota
+                if (currentWeather.coord) {
+                    initMap(currentWeather.coord.lat, currentWeather.coord.lon);
+                }
+
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayCurrentWeather(data) {
+            document.getElementById('city-name').textContent = data.name;
+            document.getElementById('date-time').textContent = formatTimestamp(data.dt);
+            document.getElementById('temperature').textContent = `${Math.round(data.main.temp)}°C`;
+            document.getElementById('weather-description').textContent = data.weather[0].description;
+            document.getElementById('feels-like').textContent = `Terasa seperti ${Math.round(data.main.feels_like)}°C`;
+            document.getElementById('weather-icon').src = `https://openweathermap.org/img/wn/${data.weather[0].icon}@4x.png`;
+            document.getElementById('humidity').textContent = `${data.main.humidity}%`;
+            document.getElementById('wind').textContent = formatWind(data.wind.speed, data.wind.deg);
+            document.getElementById('pressure').textContent = `${data.main.pressure} hPa`;
+            document.getElementById('visibility').textContent = `${data.visibility / 1000} km`;
+            document.getElementById('sunrise').textContent = formatTime(data.sys.sunrise);
+            document.getElementById('sunset').textContent = formatTime(data.sys.sunset);
+        }
+
+        // --- FITUR BARU: Fungsi untuk menampilkan forecast ---
+        function displayForecast(data) {
+            forecastGrid.innerHTML = ''; // Kosongkan forecast sebelumnya
+            const dailyData = {};
+
+            // Proses data forecast (yang per 3 jam) menjadi per hari
+            for (const forecast of data.list) {
+                const date = new Date(forecast.dt * 1000).toISOString().split('T')[0];
+                if (!dailyData[date]) {
+                    dailyData[date] = {
+                        temps: [],
+                        icons: {},
+                        descs: {}
+                    };
+                }
+                dailyData[date].temps.push(forecast.main.temp);
+                dailyData[date].icons[forecast.weather[0].icon] = (dailyData[date].icons[forecast.weather[0].icon] || 0) + 1;
+                dailyData[date].descs[forecast.weather[0].description] = (dailyData[date].descs[forecast.weather[0].description] || 0) + 1;
+            }
+
+            // Buat kartu untuk 5 hari ke depan
+            Object.keys(dailyData).slice(0, 5).forEach(date => {
+                const dayInfo = dailyData[date];
+                const dayName = new Date(date).toLocaleDateString('id-ID', { weekday: 'short' });
+                const temp_max = Math.round(Math.max(...dayInfo.temps));
+                const temp_min = Math.round(Math.min(...dayInfo.temps));
+                const mostCommonIcon = Object.keys(dayInfo.icons).reduce((a, b) => dayInfo.icons[a] > dayInfo.icons[b] ? a : b);
+                const mostCommonDesc = Object.keys(dayInfo.descs).reduce((a, b) => dayInfo.descs[a] > dayInfo.descs[b] ? a : b);
+
+                const card = document.createElement('div');
+                card.className = 'forecast-card';
+                card.innerHTML = `
+                    <div class="day">${dayName}</div>
+                    <img src="https://openweathermap.org/img/wn/${mostCommonIcon}.png" alt="${mostCommonDesc}">
+                    <div class="temp">${temp_max}°/${temp_min}°</div>
+                    <div class="desc">${mostCommonDesc}</div>
+                `;
+                forecastGrid.appendChild(card);
+            });
+        }
+        
+        // --- FITUR BARU: Fungsi untuk mengubah latar belakang ---
+        function updateBackground(weatherMain) {
+            let bgClass = '--bg-default';
+            switch (weatherMain) {
+                case 'Clear': bgClass = '--bg-clear'; break;
+                case 'Clouds': bgClass = '--bg-clouds'; break;
+                case 'Rain': case 'Drizzle': bgClass = '--bg-rain'; break;
+                case 'Thunderstorm': bgClass = '--bg-thunderstorm'; break;
+                case 'Snow': bgClass = '--bg-snow'; break;
+                case 'Mist': case 'Fog': case 'Haze': bgClass = '--bg-mist'; break;
+            }
+            body.style.background = `var(${bgClass})`;
+        }
+
+        // --- FUNGSI BANTUAN & UI ---
+        function showLoading() {
+            loader.style.display = 'block';
+            weatherContent.style.display = 'none';
+            errorMessage.style.display = 'none';
+        }
+        function hideLoading() { loader.style.display = 'none'; }
+        function showError(message) {
+            errorMessage.textContent = `Terjadi kesalahan: ${message}. Silakan coba lagi.`;
+            errorMessage.style.display = 'block';
+            weatherContent.style.display = 'none';
+        }
+
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp * 1000).toLocaleDateString('id-ID', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+        }
+        function formatTime(timestamp) {
+            return new Date(timestamp * 1000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        }
+        function formatWind(speed, degrees) {
+            const speedKmh = (speed * 3.6).toFixed(1);
+            const directions = ['U', 'TL', 'T', 'TG', 'S', 'BD', 'B', 'BL'];
+            const index = Math.round(degrees / 45) % 8;
+            return `${speedKmh} km/j, ${directions[index]}`;
+        }
+        
+        // --- EVENT LISTENERS ---
+        searchButton.addEventListener('click', () => {
+            const city = cityInput.value.trim();
+            if (city) fetchAllWeather(city);
+            else showError('Nama kota tidak boleh kosong');
+        });
+
+        cityInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') searchButton.click();
+        });
+        
+        // --- INISIALISASI ---
+        window.addEventListener('load', () => fetchAllWeather(defaultCity));
+    </script>
+</body>
+</html>
